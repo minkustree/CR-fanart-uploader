@@ -7,19 +7,24 @@ import webbrowser
 import pickle
 from time import time
 import json
+from pathlib import Path
+from urllib.parse import quote
 
 
-def fetch(path):
+def fetch(path, url):
     headers = { 'User-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36'}
-    response = requests.get('https://critrole.com/fan-art-gallery-reflection/', headers=headers)
+    response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.content.decode(), 'html.parser')
     img_srcs = [a['href'] for a in soup.find_all('a', class_='wpgridlightbox')]
     for src in img_srcs:
-        resp = requests.get(src, headers=headers)
         filename = urlparse(src).path.split('/')[-1]
-        print(filename)
-        open(os.path.join(path, filename), 'wb').write(resp.content)
-    print(img_srcs)
+        print('Requesting ', filename)
+        resp = requests.get(src, headers=headers)
+        
+        full_path = path / filename
+        print('Saving to ', full_path)
+        if not full_path.exists():
+            open(full_path, 'wb').write(resp.content)
 
 def upload(path):
     # TODO: Upload to archive
@@ -81,6 +86,7 @@ class GooglePhotos:
             self._save_token()
 
         self.session.token = self.token
+        self.api = build('photoslibrary', 'v1', credentials=credentials_from_session(self.session))
 
     @property
     def _client_secret(self):
@@ -98,17 +104,43 @@ class GooglePhotos:
 
     def get_albums_gc(self):
         self.ensure_token()
-        s = build('photoslibrary', 'v1', credentials=credentials_from_session(self.session))
-        print(s.albums().list().execute())
+        print(self.api.albums().list().execute())
+
+    def upload_bytes(self, bytez, filename):        
+        self.ensure_token()        
+        headers = { 
+            'Content-type': 'application/octet-stream',
+            'X-Goog-Upload-File-Name': quote(filename),
+            'X-Goog-Upload-Protocol': 'raw'
+        }
+        r = self.session.post('https://photoslibrary.googleapis.com/v1/uploads', data=bytez, headers=headers)
+        r.raise_for_status()
+        uploadToken = r.text
+        print(uploadToken)
+        results = self.api.mediaItems().batchCreate(body={
+            'newMediaItems': [ {'description':'Otter', 
+                                'simpleMediaItem': {'uploadToken': uploadToken}}
+                            ]
+            }).execute()
+        print(results)
+        pass
+        
+
 
 def main():
     # test_google_client()
-    # path = 'out'
-    # # fetch(path)
+    # gallery_name = 'cosplay-gallery-july-2019'
+    gallery_name = 'fan-art-gallery-reflection'
+    path = Path('.') / 'out' / gallery_name
+    
+    path.mkdir(parents=True, exist_ok=True)
+    # fetch(path, 'https://critrole.com/' + gallery_name + '/')
     # upload(path)
     
     p = GooglePhotos()
-    p.get_albums_gc()
+    filename = '@EmberWickArt.jpg'
+    p.upload_bytes(open(path / filename, 'rb').read(), filename)
+    # p.get_albums_gc()
 
 
 if __name__=='__main__':
