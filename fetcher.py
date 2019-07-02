@@ -25,6 +25,15 @@ def upload(path):
     # TODO: Upload to archive
     pass
 
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+
+def test_google_client():
+    flow = InstalledAppFlow.from_client_secrets_file('client_secrets.json', scopes=['https://www.googleapis.com/auth/photoslibrary'])
+    flow.run_local_server()
+    service = build('photoslibrary', 'v1', credentials=flow.credentials)
+    print(service.albums().list().execute())
+
 class GooglePhotos:
     CLIENT_ID = "767079479609-dqsjbm5okn3cssn4579ou9tt7eq9hm4s.apps.googleusercontent.com"
     AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
@@ -53,7 +62,7 @@ class GooglePhotos:
         if not self.token:
             self.session.scope = GooglePhotos.SCOPE
             self.session.redirect_uri = GooglePhotos.REDIRECT_URI
-            authorization_url, state = self.session.authorization_url(GooglePhotos.AUTH_URI,
+            authorization_url, _ = self.session.authorization_url(GooglePhotos.AUTH_URI,
                 # offline for refresh token, # force to always make user click authorize                
                     access_type="offline", prompt="select_account")    
             webbrowser.open(authorization_url)
@@ -87,11 +96,13 @@ class GooglePhotos:
         # body = json.dumps({"album": })
 
 def main():
+    test_google_client()
     # path = 'out'
     # # fetch(path)
     # upload(path)
-    p = GooglePhotos()
-    p.get_albums()
+    
+    # p = GooglePhotos()
+    # p.get_albums()
 
 
 if __name__=='__main__':
