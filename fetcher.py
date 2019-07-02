@@ -27,6 +27,7 @@ def upload(path):
 
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.helpers import credentials_from_session
 
 def test_google_client():
     flow = InstalledAppFlow.from_client_secrets_file('client_secrets.json', scopes=['https://www.googleapis.com/auth/photoslibrary'])
@@ -95,14 +96,19 @@ class GooglePhotos:
         self.ensure_token()
         # body = json.dumps({"album": })
 
+    def get_albums_gc(self):
+        self.ensure_token()
+        s = build('photoslibrary', 'v1', credentials=credentials_from_session(self.session))
+        print(s.albums().list().execute())
+
 def main():
-    test_google_client()
+    # test_google_client()
     # path = 'out'
     # # fetch(path)
     # upload(path)
     
-    # p = GooglePhotos()
-    # p.get_albums()
+    p = GooglePhotos()
+    p.get_albums_gc()
 
 
 if __name__=='__main__':
