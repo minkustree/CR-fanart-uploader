@@ -109,3 +109,5 @@ out/
 token.pickle
 client-secret.json
 client_secrets.json
+
+.vscode/tags
