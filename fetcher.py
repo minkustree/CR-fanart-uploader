@@ -9,31 +9,44 @@ from time import time
 import json
 from pathlib import Path
 from urllib.parse import quote
-
-
-def fetch(path, url):
-    headers = { 'User-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36'}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.content.decode(), 'html.parser')
-    img_srcs = [a['href'] for a in soup.find_all('a', class_='wpgridlightbox')]
-    for src in img_srcs:
-        filename = urlparse(src).path.split('/')[-1]
-        print('Requesting ', filename)
-        resp = requests.get(src, headers=headers)
-        
-        full_path = path / filename
-        print('Saving to ', full_path)
-        if not full_path.exists():
-            open(full_path, 'wb').write(resp.content)
-
-def upload(path):
-    # TODO: Upload to archive
-    pass
-
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google_auth_oauthlib.helpers import credentials_from_session
 
+def fetch(path, url, metadata={}):
+    headers = { 'User-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36'}
+    response = requests.get(url, headers=headers)
+    soup = BeautifulSoup(response.content.decode(), 'html.parser')
+    img_links = soup.find_all('a', class_='wpgridlightbox')
+    for a in img_links:
+        src = a['href']
+        title = a['data-title']
+        filename = urlparse(src).path.split('/')[-1]
+        full_path = path / filename
+        metadata_path = full_path.with_suffix('.txt')
+
+        print('Checking ' + filename, end='... ')
+        if download_needed(full_path, src, headers):
+            print('Downloading... ', end='')
+            resp = requests.get(src, headers=headers)
+            resp.raise_for_status()
+            open(full_path, 'wb').write(resp.content)
+            print('Done.')
+        else:
+            print('Unchanged.')
+        open(metadata_path, 'wt', encoding='utf-8').write(title)
+
+
+def download_needed(full_path, src, request_headers):
+    if not full_path.exists(): 
+        return True
+    head = requests.head(src, headers=request_headers)
+    head.raise_for_status()
+    local_size = full_path.stat().st_size
+    remote_size = int(head.headers['Content-Length'])
+    return local_size != remote_size
+    
+    
 def test_google_client():
     flow = InstalledAppFlow.from_client_secrets_file('client_secrets.json', scopes=['https://www.googleapis.com/auth/photoslibrary'])
     flow.run_local_server()
@@ -93,7 +106,7 @@ class GooglePhotos:
         return json.load(open('client-secret.json', 'r'))['client_secret']
 
     def upload_bytes(self, bytez, filename):        
-        self.ensure_token()        
+        self.ensure_token()
         print("Uploading '" + filename, end="'. ")
         headers = { 
             'Content-type': 'application/octet-stream',
@@ -108,46 +121,108 @@ class GooglePhotos:
     def upload_image_file(self, file_path):
         bytez = open(file_path, 'rb').read()
         token = self.upload_bytes(bytez, file_path.name)
-        return self._build_new_media_item(token, file_path.name)
+        metadata = self.get_metadata(file_path) or file_path.name
+        return self._build_new_media_item(token, metadata)
+
+    def get_metadata(self, file_path):
+        metadata_path = file_path.with_suffix('.txt')
+        try:
+            return open(metadata_path, 'rt', encoding='utf-8').read()
+        except Exception:
+            return None
 
     def upload_image_files(self, file_paths):
         return [self.upload_image_file(file_path) for file_path in file_paths]
 
-    def _build_new_media_item(self, token, filename):
+    def _build_new_media_item(self, upload_token, description):
         return {
-            'description': filename,
-            'simpleMediaItem': {'uploadToken': token}
+            'description': description,
+            'simpleMediaItem': {'uploadToken': upload_token}
         }
 
-    def batch_create_media_items(self, media_items):
+    def batch_create_media_items(self, media_items, album_id=None):
         if not media_items:
             return
         self.ensure_token()
         print("Batch-creating media items. Item count =", len(media_items), end='. ')
-        body = {'newMediaItems': media_items} 
+        body = {'newMediaItems': media_items}
+        if album_id:
+            body['albumId'] = album_id
         results = self.api.mediaItems().batchCreate(body=body).execute() # pylint: disable=no-member 
         print('Done.')
         print(results)
         pass
         
-    def upload_and_register_photos(self, gallery_path, album_name, glob_pattern='*.*'):
-        file_paths = gallery_path.glob(glob_pattern)
+    def upload_and_register_photos(self, gallery_path, album_title, glob_pattern='*.*'):
+        album_id = self.find_or_create_album(album_title)
+        file_paths = [f for f in gallery_path.glob(glob_pattern) if f.suffix != '.txt']
         media_items = self.upload_image_files(file_paths)
-        self.batch_create_media_items(media_items)
+        self.batch_create_media_items(media_items, album_id)
 
+    def find_or_create_album(self, title):
+        id = self.find_album(title)
+        if not id:
+            id = self.create_album(title)
+        return id
 
+    def find_album(self, title):
+        self.ensure_token()
+        print("Searching for existing album:", title, end='. ')
+        request = self.api.albums().list() # pylint: disable=no-member 
+        while request:
+            albums_response = request.execute()
+            for album in albums_response['albums']:
+                if album.get('title', "") == title:
+                    print('Found.')
+                    return album['id']
+            request = self.api.albums().list_next(request, albums_response) # pylint: disable=no-member 
+        print ('Not found.')
+        return None
+
+    def create_album(self, title):
+        self.ensure_token()
+        print("Creating album:", title, end='. ')
+        result = self.api.albums().create(body={ # pylint: disable=no-member 
+            'album': { 'title': title }
+            }).execute()
+        print("Done")
+        return result['id']
 
 def main():
-    gallery_name = 'cosplay-gallery-july-2019'
+    gallery_slug = 'cosplay-gallery-july-2019'
     # gallery_name = 'fan-art-gallery-reflection'
-    path = Path('.') / 'out' / gallery_name
+    # gallery_name = 'fan-art-gallery-humbled'
+    album_title = 'Fan Art Gallery: Humbled'
+    gallery_slug = slugify(album_title)
+
+    path = Path('.') / 'out' / gallery_slug
     
     path.mkdir(parents=True, exist_ok=True)
-    fetch(path, 'https://critrole.com/' + gallery_name + '/')
+    fetch(path, 'https://critrole.com/' + gallery_slug + '/')
     
     p = GooglePhotos()
-    print(p.find_album('Cosplay Gallery July 2019'))
-    p.upload_and_register_photos(path, gallery_name)
+    p.upload_and_register_photos(path, album_title)
+    
+
+# This code is from https://github.com/django/django/blob/master/django/utils/text.py
+# If this is not enough, consider https://github.com/un33k/python-slugify and others
+
+import unicodedata
+import re
+
+def slugify(value, allow_unicode=False):
+    """
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces to hyphens.
+    Remove characters that aren't alphanumerics, underscores, or hyphens.
+    Convert to lowercase. Also strip leading and trailing whitespace.
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value).strip().lower()
+    return re.sub(r'[-\s]+', '-', value)   
 
 
 if __name__=='__main__':
