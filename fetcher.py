@@ -38,7 +38,7 @@ def test_google_client():
     flow = InstalledAppFlow.from_client_secrets_file('client_secrets.json', scopes=['https://www.googleapis.com/auth/photoslibrary'])
     flow.run_local_server()
     service = build('photoslibrary', 'v1', credentials=flow.credentials)
-    print(service.albums().list().execute())
+    print(service.albums().list().execute()) # pylint: disable=no-member 
 
 class GooglePhotos:
     CLIENT_ID = "767079479609-dqsjbm5okn3cssn4579ou9tt7eq9hm4s.apps.googleusercontent.com"
@@ -92,22 +92,9 @@ class GooglePhotos:
     def _client_secret(self):
         return json.load(open('client-secret.json', 'r'))['client_secret']
 
-    def get_albums(self):
-        self.ensure_token()
-        r = self.session.get('https://photoslibrary.googleapis.com/v1/albums')
-        r.raise_for_status()
-        print(r.text)
-    
-    def create_album(self, title):
-        self.ensure_token()
-        # body = json.dumps({"album": })
-
-    def get_albums_gc(self):
-        self.ensure_token()
-        print(self.api.albums().list().execute())
-
     def upload_bytes(self, bytez, filename):        
         self.ensure_token()        
+        print("Uploading '" + filename, end="'. ")
         headers = { 
             'Content-type': 'application/octet-stream',
             'X-Goog-Upload-File-Name': quote(filename),
@@ -115,32 +102,52 @@ class GooglePhotos:
         }
         r = self.session.post('https://photoslibrary.googleapis.com/v1/uploads', data=bytez, headers=headers)
         r.raise_for_status()
-        uploadToken = r.text
-        print(uploadToken)
-        results = self.api.mediaItems().batchCreate(body={
-            'newMediaItems': [ {'description':'Otter', 
-                                'simpleMediaItem': {'uploadToken': uploadToken}}
-                            ]
-            }).execute()
+        print ("Done.")
+        return r.text
+
+    def upload_image_file(self, file_path):
+        bytez = open(file_path, 'rb').read()
+        token = self.upload_bytes(bytez, file_path.name)
+        return self._build_new_media_item(token, file_path.name)
+
+    def upload_image_files(self, file_paths):
+        return [self.upload_image_file(file_path) for file_path in file_paths]
+
+    def _build_new_media_item(self, token, filename):
+        return {
+            'description': filename,
+            'simpleMediaItem': {'uploadToken': token}
+        }
+
+    def batch_create_media_items(self, media_items):
+        if not media_items:
+            return
+        self.ensure_token()
+        print("Batch-creating media items. Item count =", len(media_items), end='. ')
+        body = {'newMediaItems': media_items} 
+        results = self.api.mediaItems().batchCreate(body=body).execute() # pylint: disable=no-member 
+        print('Done.')
         print(results)
         pass
         
+    def upload_and_register_photos(self, gallery_path, album_name, glob_pattern='*.*'):
+        file_paths = gallery_path.glob(glob_pattern)
+        media_items = self.upload_image_files(file_paths)
+        self.batch_create_media_items(media_items)
+
 
 
 def main():
-    # test_google_client()
-    # gallery_name = 'cosplay-gallery-july-2019'
-    gallery_name = 'fan-art-gallery-reflection'
+    gallery_name = 'cosplay-gallery-july-2019'
+    # gallery_name = 'fan-art-gallery-reflection'
     path = Path('.') / 'out' / gallery_name
     
     path.mkdir(parents=True, exist_ok=True)
-    # fetch(path, 'https://critrole.com/' + gallery_name + '/')
-    # upload(path)
+    fetch(path, 'https://critrole.com/' + gallery_name + '/')
     
     p = GooglePhotos()
-    filename = '@EmberWickArt.jpg'
-    p.upload_bytes(open(path / filename, 'rb').read(), filename)
-    # p.get_albums_gc()
+    print(p.find_album('Cosplay Gallery July 2019'))
+    p.upload_and_register_photos(path, gallery_name)
 
 
 if __name__=='__main__':
