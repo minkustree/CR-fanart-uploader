@@ -145,13 +145,13 @@ class GooglePhotos:
             return
         self.ensure_token()
         print("Batch-creating media items. Item count =", len(media_items), end='. ')
-        body = {'newMediaItems': media_items}
-        if album_id:
-            body['albumId'] = album_id
-        results = self.api.mediaItems().batchCreate(body=body).execute() # pylint: disable=no-member 
+        for i in range(0, len(media_items), 50):
+            print("Next 50 items from", i, end='. ')
+            body = {'newMediaItems': media_items[i:i+50]}
+            if album_id:
+                body['albumId'] = album_id
+            self.api.mediaItems().batchCreate(body=body).execute() # pylint: disable=no-member 
         print('Done.')
-        print(results)
-        pass
         
     def upload_and_register_photos(self, gallery_path, album_title, glob_pattern='*.*'):
         album_id = self.find_or_create_album(album_title)
