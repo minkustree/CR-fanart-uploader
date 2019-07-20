@@ -192,8 +192,9 @@ def main():
     gallery_slug = 'cosplay-gallery-july-2019'
     # gallery_name = 'fan-art-gallery-reflection'
     # gallery_name = 'fan-art-gallery-humbled'
-    album_title = 'Fan Art Gallery: Humbled'
-    gallery_slug = slugify(album_title)
+    source_gallery_name = 'Fan Art Gallery: Frayed Edges'
+    google_photos_album_title = 'CR Fan Art Gallery'
+    gallery_slug = slugify(source_gallery_name)
 
     path = Path('.') / 'out' / gallery_slug
     
@@ -201,7 +202,7 @@ def main():
     fetch(path, 'https://critrole.com/' + gallery_slug + '/')
     
     p = GooglePhotos()
-    p.upload_and_register_photos(path, album_title)
+    p.upload_and_register_photos(path, google_photos_album_title)
     
 
 # This code is from https://github.com/django/django/blob/master/django/utils/text.py
