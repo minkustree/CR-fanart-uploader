@@ -159,6 +159,22 @@ class GooglePhotos:
         media_items = self.upload_image_files(file_paths)
         self.batch_create_media_items(media_items, album_id)
 
+    def delete_photos_in_album_earlier_than_today(self, album_id, delete_before):
+        self.ensure_token()
+        print("Deleting photos from album (and all online storage) earlier than", delete_before)
+        raise NotImplementedError
+        # get all media items from album
+        # for each media item, check to see if it was created earlier than today, add it to a list if it was
+        # batchRemove from Album all items in the list. 
+        # Note there's no delete yet
+
+
+    def __test(self, album_title):
+        album_id = self.find_or_create_album(album_title)
+        self.delete_photos_in_album_earlier_than_today(album_id)
+
+
+
     def find_or_create_album(self, title):
         id = self.find_album(title)
         if not id:
