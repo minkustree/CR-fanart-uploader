@@ -168,13 +168,6 @@ class GooglePhotos:
         # batchRemove from Album all items in the list. 
         # Note there's no delete yet
 
-
-    def __test(self, album_title):
-        album_id = self.find_or_create_album(album_title)
-        self.delete_photos_in_album_earlier_than_today(album_id)
-
-
-
     def find_or_create_album(self, title):
         id = self.find_album(title)
         if not id:
@@ -205,10 +198,8 @@ class GooglePhotos:
         return result['id']
 
 def main():
-    gallery_slug = 'cosplay-gallery-july-2019'
-    # gallery_name = 'fan-art-gallery-reflection'
-    # gallery_name = 'fan-art-gallery-humbled'
-    source_gallery_name = 'Fan Art Gallery: Frayed Edges'
+    names  = get_fanart_gallery_names('https://critrole.com/category/fan-art/')
+    source_gallery_name = names[0]
     google_photos_album_title = 'CR Fan Art Gallery'
     gallery_slug = slugify(source_gallery_name)
 
@@ -241,6 +232,16 @@ def slugify(value, allow_unicode=False):
     value = re.sub(r'[^\w\s-]', '', value).strip().lower()
     return re.sub(r'[-\s]+', '-', value)   
 
+
+def get_fanart_gallery_names(url):
+    names = []
+    headers = { 'User-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36'}
+    response = requests.get(url, headers=headers)
+    soup = BeautifulSoup(response.content.decode(), 'html.parser')
+    fan_art_links = soup.select('.tag-fan-art .qt-title a')
+    for a in fan_art_links:
+        names.append(a.string.strip())
+    return names
 
 if __name__=='__main__':
     main()
